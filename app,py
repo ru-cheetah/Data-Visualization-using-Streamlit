@@ -1,0 +1,83 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
+
+# Clear previous cache and load data
+st.cache_data.clear()
+
+# Title and description
+st.title("Comprehensive Sales Analysis Dashboard")
+st.sidebar.title("Sales Analysis Dashboard")
+
+st.markdown("This application provides an in-depth analysis of sales data by various dimensions such as time, geography, customer segments, and product categories.")
+st.sidebar.markdown("Use the filters below to explore different aspects of the sales data.")
+
+# Load the dataset
+DATA_URL = "WALMARTT.csv"
+
+@st.cache(persist=True)
+def load_data():
+    data = pd.read_csv(DATA_URL)
+    # Convert date columns to datetime
+    data['Order Date'] = pd.to_datetime(data['Order Date'])
+    data['Ship Date'] = pd.to_datetime(data['Ship Date'])
+    return data
+
+data = load_data()
+
+# Sidebar filters with subheadings
+st.sidebar.subheader("Filter Data")
+
+# Subheading for Customer Segment
+st.sidebar.markdown("### Customer Segment")
+customer_segments = data['Customer Segment'].unique()
+selected_segment = [segment for segment in customer_segments if st.sidebar.checkbox(segment, value=True, key=segment)]
+
+# Subheading for Product Category
+st.sidebar.markdown("### Product Category")
+product_categories = data['Product Category'].unique()
+selected_category = [category for category in product_categories if st.sidebar.checkbox(category, value=True, key=category)]
+
+# Subheading for State
+st.sidebar.markdown("### State")
+states = data['State'].unique()
+selected_state = [state for state in states if st.sidebar.checkbox(state, value=True, key=state)]
+
+# Date Range Filter
+date_range = st.sidebar.date_input("Date Range", [data['Order Date'].min(), data['Order Date'].max()])
+# Convert date_range to datetime64[ns] format
+date_range = pd.to_datetime(date_range)
+
+# Filter data based on user selections
+filtered_data = data[(data['Customer Segment'].isin(selected_segment)) &
+                     (data['Product Category'].isin(selected_category)) &
+                     (data['State'].isin(selected_state)) &
+                     (data['Order Date'].between(date_range[0], date_range[1]))]
+
+# 1. Sales Trend Over Time
+st.markdown("### Sales Trend Over Time")
+# Group by Order Date (converted to period) and sum numerical columns, excluding datetime columns
+sales_trend = filtered_data.groupby(filtered_data['Order Date'].dt.to_period('M')).sum(numeric_only=True).reset_index()
+
+# Convert the period back to a timestamp for plotting
+sales_trend['Order Date'] = sales_trend['Order Date'].dt.to_timestamp()
+
+fig1 = px.line(sales_trend, x='Order Date', y='Sales', title='Monthly Sales Trend')
+st.plotly_chart(fig1)
+
+# 2. Profit Analysis by Product Category
+st.markdown("### Profit Analysis by Product Category")
+profit_by_category = filtered_data.groupby('Product Category')['Profit'].sum().reset_index()
+fig2 = px.bar(profit_by_category, x='Product Category', y='Profit', color='Profit', title='Profit by Product Category')
+st.plotly_chart(fig2)
+
+# 3. Order Priority Analysis
+st.markdown("### Order Priority Analysis")
+priority_analysis = filtered_data.groupby('Order Priority').agg({'Sales': 'sum', 'Profit': 'sum'}).reset_index()
+fig3 = go.Figure()
+fig3.add_trace(go.Bar(x=priority_analysis['Order Priority'], y=priority_analysis['Sales'], name='Sales', marker_color='blue'))
+fig3.add_trace(go.Bar(x=priority_analysis['Order Priority'], y=priority_analysis['Profit'], name='Profit', marker_color='green'))
+fig3.update_layout(barmode='group', title='Sales and Profit by Order Priority')
+st.plotly_chart(fig3)
